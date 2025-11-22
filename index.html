@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>問道 - 修仙模擬器 V9.1</title>
+    <style>
+        /* =========================================
+           1. 全局樣式 (Visuals)
+           ========================================= */
+        body { margin: 0; padding: 0; font-family: "Microsoft JhengHei", "KaiTi", serif; overflow: hidden; height: 100vh; width: 100vw; color: #fff; background: radial-gradient(circle at 50% 40%, rgba(255,255,255,0.2) 0%, rgba(0,0,0,0) 60%), linear-gradient(180deg, #a1c4fd 0%, #c2e9fb 30%, #1e5799 100%); display: flex; justify-content: center; align-items: center; user-select: none; }
+        .cloud-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: url('https://www.transparenttextures.com/patterns/cubes.png'); opacity: 0.3; pointer-events: none; }
+        
+        /* 動畫 */
+        .taiji { width: 200px; height: 200px; background: linear-gradient(to bottom, #fff 50%, #000 50%); border-radius: 50%; border: 4px solid rgba(255, 255, 255, 0.6); box-shadow: 0 0 50px rgba(135, 206, 235, 0.8); animation: rotate 10s linear infinite; position: relative; }
+        .taiji::before, .taiji::after { content: ''; position: absolute; top: 50%; width: 100px; height: 100px; border-radius: 50%; transform: translateY(-50%); }
+        .taiji::before { left: 0; background: #fff; background-image: radial-gradient(circle at 50% 50%, #000 15%, transparent 16%); }
+        .taiji::after { right: 0; background: #000; background-image: radial-gradient(circle at 50% 50%, #fff 15%, transparent 16%); }
+        @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+        .float-text { position: absolute; font-size: 30px; font-weight: bold; animation: floatUp 1s forwards; pointer-events: none; text-shadow: 2px 2px 0 #000; z-index: 999; }
+        @keyframes floatUp { 0% { transform: translateY(0) scale(1); opacity: 1; } 100% { transform: translateY(-60px) scale(1.5); opacity: 0; } }
+
+        /* =========================================
+           2. UI 組件 (Components)
+           ========================================= */
+        .scene { position: absolute; width: 100%; height: 100%; display: none; flex-direction: column; }
+        .scene.active { display: flex; }
+        
+        .btn-main { background: linear-gradient(90deg, #1e5799, #2989d8, #1e5799); border: 2px solid #a1c4fd; color: #fff; font-size: 20px; padding: 10px 40px; border-radius: 50px; cursor: pointer; box-shadow: 0 5px 15px rgba(30, 87, 153, 0.4); transition: 0.3s; font-weight: bold; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
+        .btn-main:hover { transform: scale(1.05); box-shadow: 0 0 20px rgba(135, 206, 235, 0.8); }
+        .btn-side { background: rgba(255, 255, 255, 0.2); border: 1px solid rgba(255, 255, 255, 0.5); color: #003366; padding: 10px 15px; font-size: 16px; border-radius: 8px; cursor: pointer; backdrop-filter: blur(5px); transition: 0.3s; font-weight: bold; }
+        .btn-side:hover { background: rgba(255, 255, 255, 0.5); transform: translateY(-2px); }
+        .btn-close { position: absolute; top: 15px; right: 15px; background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; z-index: 200; transition: 0.3s; }
+        .btn-close:hover { transform: rotate(90deg); color: #e74c3c; }
+
+        .modal-overlay { position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); display: none; justify-content: center; align-items: center; z-index: 1000; }
+        .modal-panel { width: 700px; height: 500px; background: rgba(20, 30, 50, 0.95); border: 1px solid #4a69bd; border-radius: 15px; padding: 20px; position: relative; display: flex; flex-direction: column; box-shadow: 0 0 30px rgba(0, 191, 255, 0.3); }
+        .modal-title { font-size: 28px; text-align: center; margin-bottom: 10px; color: #87CEEB; border-bottom: 1px solid #4a69bd; padding-bottom: 10px; }
+
+        .color-金 { color: #FFD700; } .color-木 { color: #90EE90; } .color-水 { color: #87CEFA; } .color-火 { color: #FF4500; } .color-土 { color: #CD853F; } .color-陰 { color: #9370DB; } .color-陽 { color: #FFA500; }
+        .border-金 { border-color: #FFD700; box-shadow: 0 0 5px rgba(255,215,0,0.3); } 
+        .border-木 { border-color: #90EE90; box-shadow: 0 0 5px rgba(144,238,144,0.3); } 
+        .border-水 { border-color: #87CEFA; box-shadow: 0 0 5px rgba(135,206,250,0.3); } 
+        .border-火 { border-color: #FF4500; box-shadow: 0 0 5px rgba(255,69,0,0.3); } 
+        .border-土 { border-color: #CD853F; box-shadow: 0 0 5px rgba(205,133,63,0.3); }
+
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; overflow-y: auto; padding: 10px; }
+        .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; overflow-y: auto; padding: 10px; }
+        
+        /* =========================================
+           3. 場景樣式
+           ========================================= */
+        #scene-title.active { display: grid; grid-template-columns: 20% 60% 20%; grid-template-rows: 30% 40% 30%; }
+        #left-area { grid-column: 1; grid-row: 1; display: flex; justify-content: center; align-items: center; }
+        #right-area { grid-column: 3; grid-row: 1; display: flex; justify-content: center; align-items: center; }
+        #spirit-core { grid-column: 2; grid-row: 2; display: flex; justify-content: center; align-items: center; }
+        #login-area { grid-column: 2; grid-row: 3; display: flex; flex-direction: column; align-items: center; padding-top: 20px; gap: 10px; }
+
+        #scene-creation { justify-content: center; align-items: center; }
+        .creation-panel { width: 800px; background: rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 30px; display: flex; flex-direction: column; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); }
+        .gender-card { width: 120px; height: 150px; border: 2px solid rgba(255,255,255,0.1); border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition:0.3s; }
+        .gender-card.selected { border-color: #00CED1; background: rgba(0, 206, 209, 0.2); transform: scale(1.05); }
+
+        .top-bar { height: 80px; display: flex; justify-content: space-between; align-items: center; padding: 0 30px; background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent); }
+        .player-profile { display: flex; align-items: center; gap: 15px; cursor: pointer; }
+        .avatar { width: 50px; height: 50px; background: #555; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid #fff; font-size: 24px; }
+        .meditation-area { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .spirit-array { width: 340px; height: 340px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(circle, rgba(135, 206, 235, 0.2) 0%, rgba(0,0,0,0) 70%); box-shadow: 0 0 50px rgba(135, 206, 235, 0.2); transition:0.3s; }
+        .exp-bar-container { width: 80%; height: 12px; background: #333; border-radius: 6px; overflow: hidden; margin-top: 15px; border: 1px solid #555; position: relative; }
+        .exp-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #00CED1, #1e5799); transition: width 0.2s linear; }
+        .bottom-nav { height: 100px; display: flex; justify-content: center; gap: 20px; padding-bottom: 20px; background: linear-gradient(to top, rgba(0,0,0,0.9), transparent); }
+        .nav-btn { width: 80px; height: 80px; background: rgba(255,255,255,0.1); border-radius: 10px; color: #fff; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: 0.3s; border: 1px solid transparent; backdrop-filter: blur(5px); }
+        .nav-btn:hover { background: rgba(255,255,255,0.2); transform: translateY(-5px); border-color: #87CEEB; }
+
+        .map-node { height: 200px; background: rgba(0,0,0,0.6); border: 2px solid #555; border-radius: 15px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; overflow: hidden; transition:0.3s; }
+        .map-node:hover { border-color: #FFD700; transform: scale(1.02); }
+        .map-bg { position: absolute; width: 100%; height: 100%; object-fit: cover; opacity: 0.3; filter: blur(2px); }
+        .shop-item { padding: 15px; background: rgba(20,20,30,0.8); border: 1px solid #666; border-radius: 10px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: space-between; transition:0.3s; min-height: 150px; }
+        .shop-item:hover { border-color: #FFD700; background: rgba(50,50,70,0.9); }
+
+        .deck-container { display: flex; gap: 20px; padding: 20px; height: 100%; box-sizing: border-box; }
+        .card-pool, .current-deck { flex: 1; background: rgba(0,0,0,0.5); border-radius: 10px; padding: 10px; overflow-y: auto; border: 1px solid #444; }
+        .mini-card { background: #222; border: 2px solid #555; padding: 10px; border-radius: 5px; cursor: pointer; text-align: center; height: 60px; display: flex; flex-direction: column; justify-content: center; position: relative; }
+        .mini-card:hover { border-color: #fff; background: #333; }
+
+        #scene-combat { background: #111; }
+        .combat-top { height: 35%; display: flex; justify-content: center; align-items: center; position: relative; }
+        .combat-bot { height: 45%; display: flex; flex-direction: column; justify-content: flex-end; background: linear-gradient(to top, #1a1a1a 0%, transparent 100%); padding-bottom: 20px; position: relative; }
+        .enemy-unit { text-align: center; position: relative; animation: float 3s ease-in-out infinite; }
+        .enemy-sprite { font-size: 100px; filter: drop-shadow(0 0 20px rgba(255, 0, 0, 0.5)); }
+        .hp-bar-frame { width: 200px; height: 15px; background: #333; border-radius: 10px; margin: 5px auto; overflow: hidden; border: 1px solid #555; }
+        .hp-fill { width: 100%; height: 100%; background: #e74c3c; transition: width 0.3s; }
+        .player-status-bar { position: absolute; bottom: 220px; left: 50%; transform: translateX(-50%); width: 350px; text-align: center; }
+        .ep-pip { width: 15px; height: 15px; background: #333; border-radius: 50%; border: 1px solid #555; display: inline-block; margin: 0 2px; }
+        .ep-pip.active { background: #00CED1; box-shadow: 0 0 10px #00CED1; border-color: #fff; }
+        
+        .hand-area { display: flex; justify-content: center; gap: 15px; height: 200px; align-items: flex-end; padding: 0 20px; perspective: 1000px; }
+        .card { width: 120px; height: 170px; background: rgba(20, 30, 40, 0.95); border: 2px solid #aaa; border-radius: 10px; display: flex; flex-direction: column; align-items: center; padding: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); cursor: pointer; transition: 0.3s; position: relative; user-select: none; }
+        .card:hover { transform: translateY(-40px) scale(1.1); z-index: 100; border-color: #fff; }
+        .card-cost { position: absolute; top: -10px; left: -10px; width: 30px; height: 30px; background: #00CED1; color: #000; font-weight: bold; border-radius: 50%; display: flex; justify-content: center; align-items: center; border: 2px solid #fff; }
+        
+        .attr-row { display: flex; justify-content: space-between; border-bottom: 1px dashed #555; padding: 8px 0; font-size: 16px; }
+        .inv-slot { background: rgba(0,0,0,0.3); border: 1px solid #555; aspect-ratio: 1; border-radius: 5px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; transition:0.2s; }
+        .inv-slot:hover { border-color: #87CEEB; background: rgba(255,255,255,0.1); }
+        .inv-detail-area { height: 100px; background: rgba(0,0,0,0.5); border-top: 1px solid #444; padding: 10px; display: flex; align-items: center; gap: 20px; }
+        .resonance-badge { background: rgba(255,215,0,0.8); color: #000; padding: 5px 10px; border-radius: 5px; font-weight: bold; font-size: 12px; box-shadow: 0 0 10px #FFD700; animation: pulse 2s infinite; margin-bottom: 5px; }
+
+    </style>
+</head>
+<body>
+    <div class="cloud-overlay"></div>
+
+    <div id="modal-character" class="modal-overlay"><div class="modal-panel"><button class="btn-close" onclick="Game.closeModals()">×</button><div class="modal-title">道友法身</div><div id="char-stats-content" style="overflow-y:auto; height:100%;"></div></div></div>
+    <div id="modal-inventory" class="modal-overlay"><div class="modal-panel"><button class="btn-close" onclick="Game.closeModals()">×</button><div class="modal-title">儲物袋</div><div style="display: flex; flex-direction: column; height: 100%;"><div id="inventory-content" class="grid-5" style="flex-grow: 1;"></div><div class="inv-detail-area" id="inv-detail"><div style="color:#aaa; width:100%; text-align:center;">點擊物品查看詳情</div></div></div></div></div>
+
+    <div id="scene-title" class="scene active">
+        <div id="left-area"><button class="btn-side" onclick="alert('【V9.1 更新公告】\n1. 修復自動修煉與離線收益\n2. 實裝自動存檔與讀取\n3. 按下「讀取存檔」可恢復進度')">📜 仙界公告</button></div>
+        <div style="grid-column:2; grid-row:1; display:flex; justify-content:center; align-items:flex-end;"><h1 style="font-size: 90px; margin: 0; color: #003366; text-shadow: 0 0 5px #fff, 0 0 20px #00BFFF;">問道</h1></div>
+        <div id="spirit-core"><div class="taiji"></div></div>
+        <div id="login-area">
+            <button class="btn-main" onclick="goToCreation()">新入仙途</button>
+            <button class="btn-side" id="load-btn" style="display:none; margin-top:10px;" onclick="Game.load()">📂 讀取存檔</button>
+        </div>
+        <div id="right-area"><button class="btn-side" id="acc-btn">👤 帳號</button></div>
+    </div>
+
+    <div id="scene-creation" class="scene">
+        <div class="creation-panel">
+            <h2 style="text-align:center; color:#fff;">轉生台</h2>
+            <div class="gender-section">
+                <div class="gender-card selected" id="g-male" onclick="selectGender('男')"><div style="font-size:50px;">🤴</div><label>男修</label></div>
+                <div class="gender-card" id="g-female" onclick="selectGender('女')"><div style="font-size:50px;">👸</div><label>女修</label></div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; flex-grow:1;">
+                <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:10px;"><div style="color:#87CEEB; margin-bottom:10px;">天賦靈根</div><div id="roots-display"></div></div>
+                <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:10px;"><div style="color:#87CEEB; margin-bottom:10px;">先天屬性</div><div id="stats-display"></div></div>
+            </div>
+            <div style="display:flex; justify-content:center; gap:20px; margin-top:20px;">
+                <button class="btn-main" style="background:#444;" onclick="rollCharacter()">🎲 逆天改命</button>
+                <button class="btn-main" onclick="startGame()">⚔️ 踏入仙途</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="scene-main" class="scene">
+        <div class="top-bar">
+            <div class="player-profile" onclick="Game.openCharacterPanel()">
+                <div class="avatar">🧘</div><div><div id="main-name" style="font-weight:bold; font-size:20px;">無名</div><div style="font-size:12px; color:#aaa;">壽元: <span id="main-lifespan">--/--</span></div></div>
+            </div>
+            <div style="color:#FFD700; font-size:20px;">💎 <span id="main-money">0</span></div>
+        </div>
+        <div class="meditation-area">
+            <div class="spirit-array">
+                <div style="font-size:36px; font-weight:900; color:#fff; text-shadow:0 0 20px #00CED1;" id="main-realm">煉氣 · 一重天</div>
+                <button class="btn-main" id="cultivate-btn" style="opacity:0.7; margin-top:20px;">🧘 自動修煉中...</button>
+                <div class="exp-bar-container"><div class="exp-bar-fill" id="exp-bar"></div></div>
+                <div style="font-size:14px; color:#ccc; margin-top:5px;" id="exp-text">修為: 0 / 1000</div>
+                <div style="font-size:12px; color:#00FF7F; margin-top:5px;" id="gain-text">效率: +10/秒</div>
+            </div>
+        </div>
+        <div class="bottom-nav">
+            <div class="nav-btn" onclick="Game.openInventory()"><div style="font-size:30px;">🎒</div>背包</div>
+            <div class="nav-btn" onclick="Deck.open()"><div style="font-size:30px;">📖</div>功法</div>
+            <div class="nav-btn" style="border-color:#00CED1;"><div style="font-size:30px;">🧘</div>洞府</div>
+            <div class="nav-btn" onclick="switchScene('scene-adventure')"><div style="font-size:30px;">⚔️</div>歷練</div>
+            <div class="nav-btn" onclick="Shop.open()"><div style="font-size:30px;">🏪</div>坊市</div>
+        </div>
+    </div>
+
+    <div id="scene-adventure" class="scene">
+        <div class="top-bar"><button class="btn-close" style="position:relative; top:0; right:0;" onclick="switchScene('scene-main')">↩ 返回</button><div style="font-size:24px; font-weight:bold;">九州大地</div><div style="width:100px;"></div></div>
+        <div class="map-grid">
+            <div class="map-node" onclick="Combat.start('幽暗密林')"><div class="map-bg" style="background:#2d3436;"></div><h3>🌲 幽暗密林</h3><span>推薦: 煉氣期</span><div style="font-size:12px; color:#00FF7F; margin-top:5px;">掉落: 少量靈石</div></div>
+            <div class="map-node" onclick="Combat.start('萬妖谷')"><div class="map-bg" style="background:#636e72;"></div><h3>👹 萬妖谷</h3><span>推薦: 築基期</span><div style="font-size:12px; color:#FFD700; margin-top:5px;">掉落: 大量靈石</div></div>
+        </div>
+    </div>
+
+    <div id="scene-shop" class="scene">
+        <div class="top-bar"><button class="btn-close" style="position:relative; top:0; right:0;" onclick="switchScene('scene-main')">↩ 返回</button><div style="font-size:24px; font-weight:bold;">天機閣坊市</div><div style="color:#FFD700;">💎 <span id="shop-money">0</span></div></div>
+        <div class="map-grid" id="shop-grid"></div>
+        <div style="text-align:center; margin-bottom:20px;"><button class="btn-main" onclick="Shop.refresh()">🔄 刷新貨物 (10靈石)</button></div>
+    </div>
+
+    <div id="scene-deck" class="scene">
+        <div class="top-bar"><button class="btn-close" style="position:relative; top:0; right:0;" onclick="switchScene('scene-main')">↩ 返回</button><div style="font-size:24px; font-weight:bold;">功法配置</div><div style="width:100px;"></div></div>
+        <div class="deck-container">
+            <div class="card-pool"><div style="text-align:center; margin-bottom:10px; color:#87CEEB;">📜 已習得功法</div><div class="grid-3" id="pool-grid"></div></div>
+            <div class="current-deck"><div style="text-align:center; margin-bottom:10px; color:#FFD700;">⚔️ 戰鬥牌組 (<span id="deck-count">0</span>/8)</div><div style="font-size:12px; color:#aaa; text-align:center; margin-bottom:10px;">(同名卡牌僅限一張)</div><div class="grid-3" id="deck-grid"></div></div>
+        </div>
+    </div>
+
+    <div id="scene-combat" class="scene">
+        <div id="resonance-area" style="position:absolute; top:80px; left:20px; display:flex; flex-direction:column; gap:5px;"></div>
+        <div class="combat-top">
+            <div class="enemy-unit">
+                <div class="enemy-sprite" id="enemy-sprite">🐺</div>
+                <div class="hp-bar-frame"><div class="hp-fill" id="enemy-hp-bar"></div></div>
+                <div style="display:flex; justify-content:center; gap:10px; align-items:center;"><div id="enemy-name" style="font-weight:bold; font-size:20px;">妖狼</div><div style="font-size:14px; color:#aaa;">(SPD: <span id="enemy-speed">10</span>)</div></div>
+                <div id="enemy-hp-text">100/100</div>
+            </div>
+        </div>
+        <div class="combat-bot">
+            <div class="player-status-bar">
+                <div style="margin-bottom:5px; color:#87CEEB; font-weight:bold; display:flex; justify-content:space-between;"><span>我方狀態</span><span style="font-size:12px; color:#aaa;">SPD: <span id="player-speed">10</span></span></div>
+                <div class="hp-bar-frame" style="background:#111; border-color:#00CED1;"><div class="hp-fill" id="player-hp-bar" style="background:#00CED1;"></div></div>
+                <div style="margin-top:5px;"><span id="player-hp-text"></span> <span id="player-shield-display" style="color:#00CED1; font-weight:bold;"></span></div>
+                <div style="display:flex; justify-content:center; margin-top:10px;" id="ep-display"></div>
+                <div style="font-weight:bold; color:#00CED1; margin-top:5px;">EP: <span id="ep-val"></span></div>
+            </div>
+            <div class="hand-area" id="hand-area"></div>
+            <div style="position:absolute; right:30px; bottom:30px; display:flex; flex-direction:column; gap:15px;">
+                <button class="btn-main" style="background:#e74c3c; border-color:#c0392b;" onclick="Combat.endTurn()">結束回合</button>
+                <button class="btn-main" style="background:#555; border-color:#777; font-size:14px; padding:8px 20px;" onclick="Combat.flee()">逃跑</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* =========================================
+           問道 V9.1 - 核心邏輯 (Fix Auto-Cultivation & Save)
+           ========================================= */
+
+        const REALMS = ["煉氣", "闢榖", "築基", "結丹", "元嬰", "煉神", "化神", "煉虛", "化虛", "合體", "大乘", "真仙"];
+        const ROOTS_BASE = ["金", "木", "水", "火", "土"];
+        
+        const CARD_DB = [
+            { id: "c01", name: "火球術", cost: 1, type: "攻擊", val: 20, element: "火", desc: "造成 20 點傷害" },
+            { id: "c02", name: "凝水盾", cost: 1, type: "防禦", val: 15, element: "水", desc: "獲得 15 點護盾" },
+            { id: "c03", name: "金光斬", cost: 2, type: "攻擊", val: 45, element: "金", desc: "造成 45 點傷害" },
+            { id: "c04", name: "厚土訣", cost: 2, type: "防禦", val: 40, element: "土", desc: "獲得 40 點護盾" },
+            { id: "c05", name: "青木勁", cost: 0, type: "恢復", val: 15, element: "木", desc: "回復 15 點生命" },
+            { id: "c06", name: "烈焰風暴", cost: 3, type: "攻擊", val: 70, element: "火", desc: "造成 70 點傷害" },
+            { id: "c07", name: "萬劍歸宗", cost: 4, type: "攻擊", val: 99, element: "金", desc: "造成 99 點傷害" },
+            { id: "c08", name: "水龍吟", cost: 3, type: "攻擊", val: 50, element: "水", desc: "造成 50 傷害，回 10 血" },
+            { id: "c09", name: "不動明王", cost: 3, type: "防禦", val: 60, element: "土", desc: "獲得 60 點護盾" }
+        ];
+
+        class Player {
+            constructor(name) {
+                this.name = name; this.gender = "男";
+                this.realmIdx = 0; this.subRealm = 1;
+                this.lifespanMax = 30; this.lifespanCurrent = 16;
+                this.exp = 0; this.maxExp = 1000; this.expGain = 10;
+                this.currency = { spiritStone: 100 };
+                this.roots = {}; 
+                this.stats = { hp: 100, maxHp: 100, atk: 10, def: 5, speed: 10 };
+                this.advStats = { critRate: 5, critDmg: 150, blockRate: 0, hitRate: 100, dodge: 5 };
+                this.inventory = [
+                    { id: "i002", name: "聚氣丹", icon: "💊", count: 5, desc: "吞服後增加少量修為" },
+                    { id: "i003", name: "桃木劍", icon: "🗡️", count: 1, desc: "新手武器，具紀念價值" }
+                ];
+                this.ownedCards = ["c01", "c02", "c03", "c05"];
+                this.deck = ["c01", "c02", "c03", "c05"];
+                this.lastSaveTime = Date.now(); // 存檔時間戳
+            }
+        }
+
+        let tempCharData = { gender: "男", roots: {}, stats: {} };
+
+        const Game = {
+            player: null, loopInterval: null, autoSaveInterval: null,
+            
+            init: function() {
+                // 檢查是否有存檔
+                if(localStorage.getItem('wendao_save_v9')) {
+                    document.getElementById('load-btn').style.display = 'inline-block';
+                }
+            },
+
+            save: function() {
+                if(!this.player) return;
+                this.player.lastSaveTime = Date.now();
+                localStorage.setItem('wendao_save_v9', JSON.stringify(this.player));
+                console.log("Game Saved");
+            },
+
+            load: function() {
+                const data = localStorage.getItem('wendao_save_v9');
+                if(data) {
+                    const plain = JSON.parse(data);
+                    this.player = new Player(plain.name);
+                    Object.assign(this.player, plain); // 恢復數據
+                    
+                    // 計算離線收益
+                    const now = Date.now();
+                    const diffSeconds = Math.floor((now - this.player.lastSaveTime) / 1000);
+                    if(diffSeconds > 0) {
+                        // 恢復 expGain 數值
+                        this.recalcRealmStats(); 
+                        const offlineExp = diffSeconds * this.player.expGain;
+                        this.player.exp += offlineExp;
+                        if(this.player.exp > this.player.maxExp) this.player.exp = this.player.maxExp;
+                        alert(`歡迎回來道友！\n您離線了 ${diffSeconds} 秒\n獲得離線修為: ${offlineExp}`);
+                    }
+
+                    this.recalcRealmStats();
+                    switchScene('scene-main');
+                    this.startLoop();
+                    updateMainUI();
+                }
+            },
+
+            startLoop: function() { 
+                if (this.loopInterval) clearInterval(this.loopInterval); 
+                this.loopInterval = setInterval(() => this.updatePerSecond(), 1000);
+                
+                // 自動存檔 (每5秒)
+                if (this.autoSaveInterval) clearInterval(this.autoSaveInterval);
+                this.autoSaveInterval = setInterval(() => this.save(), 5000);
+            },
+            
+            updatePerSecond: function() {
+                if (!this.player) return;
+                if (this.player.exp < this.player.maxExp) {
+                    this.player.exp += this.player.expGain; 
+                    if (this.player.exp > this.player.maxExp) this.player.exp = this.player.maxExp;
+                    updateMainUI();
+                }
+                const btn = document.getElementById('cultivate-btn');
+                if (this.player.exp >= this.player.maxExp) {
+                    btn.innerText = "⚡ 突破瓶頸"; btn.style.opacity = "1"; 
+                    btn.style.background = "linear-gradient(90deg, #d35400, #e67e22)"; 
+                    btn.style.cursor = "pointer"; btn.onclick = () => Game.attemptBreakthrough();
+                } else {
+                    btn.innerText = "🧘 自動修煉中..."; btn.style.opacity = "0.7"; 
+                    btn.style.background = ""; btn.style.cursor = "default"; btn.onclick = null;
+                }
+            },
+
+            attemptBreakthrough: function() {
+                alert("突破成功！境界提升！"); 
+                this.player.subRealm++;
+                if (this.player.subRealm > ((this.player.realmIdx <= 3) ? 10 : 4)) {
+                    this.player.realmIdx++; this.player.subRealm = 1;
+                    this.player.lifespanMax = [30,60,90,120,200,300,400,500,600,700,800,900][this.player.realmIdx];
+                    alert(`恭喜晉升【${REALMS[this.player.realmIdx]}】！`);
+                }
+                this.recalcRealmStats(); this.player.exp = 0; updateMainUI();
+                this.save(); // 突破後立即存檔
+            },
+
+            recalcRealmStats: function() {
+                let gain = (this.player.realmIdx+1) * 10;
+                let cap = (this.player.realmIdx===0) ? (this.player.subRealm * 1000) : (this.player.subRealm * 2000 * (this.player.realmIdx+1));
+                this.player.expGain = gain; this.player.maxExp = cap;
+                this.player.stats.maxHp = 100 + (this.player.realmIdx * 100) + (this.player.subRealm * 20);
+                this.player.stats.hp = this.player.stats.maxHp;
+                this.player.stats.atk = 10 + (this.player.realmIdx * 10) + this.player.subRealm;
+                this.player.stats.speed = 10 + this.player.realmIdx;
+            },
+
+            openCharacterPanel: function() {
+                let p = this.player;
+                let html = `
+                    <div class="attr-row"><span class="attr-label">道號</span><span class="attr-val">${p.name}</span></div>
+                    <div class="attr-row"><span class="attr-label">境界</span><span class="attr-val">${REALMS[p.realmIdx]} ${p.subRealm}</span></div>
+                    <div class="attr-row"><span class="attr-label">壽元</span><span class="attr-val">${p.lifespanCurrent} / ${p.lifespanMax}</span></div>
+                    <br><div style="color:#87CEEB; margin-bottom:5px;">基礎屬性</div>
+                    <div class="attr-row"><span class="attr-label">氣血</span><span class="attr-val">${p.stats.hp}/${p.stats.maxHp}</span></div>
+                    <div class="attr-row"><span class="attr-label">攻擊</span><span class="attr-val">${p.stats.atk}</span></div>
+                    <div class="attr-row"><span class="attr-label">防禦</span><span class="attr-val">${p.stats.def}</span></div>
+                    <div class="attr-row"><span class="attr-label">速度</span><span class="attr-val">${p.stats.speed}</span></div>
+                    <br><div style="color:#FFA500; margin-bottom:5px;">進階屬性</div>
+                    <div class="attr-row"><span class="attr-label">會心率</span><span class="attr-val">${p.advStats.critRate}%</span></div>
+                    <div class="attr-row"><span class="attr-label">會心傷害</span><span class="attr-val">${p.advStats.critDmg}%</span></div>
+                    <div class="attr-row"><span class="attr-label">閃避率</span><span class="attr-val">${p.advStats.dodge}%</span></div>
+                    <div class="attr-row"><span class="attr-label">格擋率</span><span class="attr-val">${p.advStats.blockRate}%</span></div>
+                    <br><div style="color:#87CEEB; border-bottom:1px solid #444; margin-bottom:5px;">靈根資質</div>
+                `;
+                for(let [k,v] of Object.entries(p.roots)) html += `<div class="attr-row"><span class="attr-label color-${k}">${k}靈根</span><span class="attr-val">${v}%</span></div>`;
+                document.getElementById('char-stats-content').innerHTML = html; document.getElementById('modal-character').style.display = 'flex';
+            },
+
+            openInventory: function() {
+                const invDiv = document.getElementById('inventory-content'); invDiv.innerHTML = "";
+                this.player.inventory.forEach((item, idx) => {
+                    let el = document.createElement('div'); el.className = 'inv-slot';
+                    el.innerHTML = `<div style="font-size:30px;">${item.icon}</div><div style="font-size:12px; position:absolute; bottom:2px; right:5px;">${item.count}</div>`;
+                    el.onclick = () => Game.showItemDetail(idx);
+                    invDiv.appendChild(el);
+                });
+                for(let i=this.player.inventory.length; i<20; i++) invDiv.innerHTML += `<div class="inv-slot"></div>`;
+                document.getElementById('inv-detail').innerHTML = '<div style="color:#aaa; width:100%; text-align:center;">點擊物品查看詳情</div>';
+                document.getElementById('modal-inventory').style.display = 'flex';
+            },
+
+            showItemDetail: function(idx) {
+                let item = this.player.inventory[idx]; if(!item) return;
+                document.getElementById('inv-detail').innerHTML = `
+                    <div style="font-size:50px; width:80px; text-align:center;">${item.icon}</div>
+                    <div style="display:flex; flex-direction:column;">
+                        <div style="font-size:20px; font-weight:bold; color:#FFD700;">${item.name}</div>
+                        <div style="color:#ccc; font-size:14px; margin-top:5px;">${item.desc}</div>
+                        <div style="color:#aaa; font-size:12px; margin-top:5px;">持有: ${item.count}</div>
+                    </div>
+                `;
+            },
+
+            closeModals: function() { document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none'); }
+        };
+
+        const Shop = {
+            items: [],
+            open: function() { switchScene('scene-shop'); this.refresh(true); },
+            refresh: function(free=false) {
+                if(!free) {
+                    if(Game.player.currency.spiritStone < 10) { alert("靈石不足！"); return; }
+                    Game.player.currency.spiritStone -= 10;
+                }
+                document.getElementById('shop-money').innerText = Game.player.currency.spiritStone;
+                this.items = [];
+                for(let i=0; i<3; i++) {
+                    let card = CARD_DB[Math.floor(Math.random() * CARD_DB.length)];
+                    this.items.push({ type:'card', data: card, price: card.cost * 50 + 30 });
+                }
+                this.render();
+            },
+            render: function() {
+                const grid = document.getElementById('shop-grid'); grid.innerHTML = "";
+                this.items.forEach((item, idx) => {
+                    let el = document.createElement('div'); el.className = 'shop-item';
+                    el.onclick = () => Shop.buy(idx);
+                    el.innerHTML = `<div style="font-size:40px; color:${{'金':'#FFD700','木':'#90EE90','水':'#87CEFA','火':'#FF4500','土':'#CD853F'}[item.data.element]}">📜</div><div>${item.data.name}</div><div style="color:#aaa; font-size:12px; text-align:center;">${item.data.desc}</div><div style="color:#FFD700; font-weight:bold; margin-top:5px;">${item.price} 靈石</div>`;
+                    grid.appendChild(el);
+                });
+            },
+            buy: function(idx) {
+                let item = this.items[idx];
+                if(Game.player.currency.spiritStone >= item.price) {
+                    Game.player.currency.spiritStone -= item.price;
+                    Game.player.ownedCards.push(item.data.id);
+                    alert(`購買成功：${item.data.name}`);
+                    this.items.splice(idx, 1); this.render();
+                    document.getElementById('shop-money').innerText = Game.player.currency.spiritStone;
+                    Game.save(); // 購買後存檔
+                } else { alert("靈石不足！"); }
+            }
+        };
+
+        const Deck = {
+            open: function() { switchScene('scene-deck'); this.render(); },
+            render: function() {
+                const poolDiv = document.getElementById('pool-grid'); const deckDiv = document.getElementById('deck-grid');
+                poolDiv.innerHTML = ""; deckDiv.innerHTML = "";
+                document.getElementById('deck-count').innerText = Game.player.deck.length;
+
+                Game.player.ownedCards.forEach((cid, idx) => {
+                    let c = CARD_DB.find(x => x.id === cid);
+                    let el = document.createElement('div'); 
+                    el.className = `mini-card border-${c.element}`;
+                    el.innerHTML = `<div class="color-${c.element}">${c.name}</div><div style="font-size:10px; color:#aaa;">${c.element}系</div>`;
+                    el.onclick = () => Deck.equip(idx);
+                    poolDiv.appendChild(el);
+                });
+
+                Game.player.deck.forEach((cid, idx) => {
+                    let c = CARD_DB.find(x => x.id === cid);
+                    let el = document.createElement('div'); 
+                    el.className = `mini-card border-${c.element}`;
+                    el.innerHTML = `<div class="color-${c.element}">${c.name}</div><div style="font-size:10px; color:#aaa;">${c.element}系</div>`;
+                    el.onclick = () => Deck.remove(idx);
+                    deckDiv.appendChild(el);
+                });
+            },
+            equip: function(idx) {
+                let cardId = Game.player.ownedCards[idx];
+                if(Game.player.deck.includes(cardId)) { alert("【限制】同名卡牌僅限攜帶一張！"); return; }
+                if(Game.player.deck.length >= 8) { alert("戰鬥牌組已滿 (8張)"); return; }
+                Game.player.deck.push(cardId); this.render();
+                Game.save();
+            },
+            remove: function(idx) { Game.player.deck.splice(idx, 1); this.render(); Game.save(); }
+        };
+
+        const Combat = {
+            enemy: null, turn: 1, ep: 0, shield: 0, hand: [], drawPile: [], discardPile: [], activeBuffs: {},
+            start: function(loc) {
+                let enemyHp = loc === '幽暗密林' ? 60 : 300;
+                let enemyAtk = loc === '幽暗密林' ? 10 : 30;
+                let enemySpeed = loc === '幽暗密林' ? 10 : 15;
+                
+                this.enemy = { name: loc, hp: enemyHp, maxHp: enemyHp, atk: enemyAtk, speed: enemySpeed, sprite: loc === '幽暗密林' ? '🐗' : '👹' };
+                
+                Game.player.stats.hp = Game.player.stats.maxHp; 
+                this.turn = 1; this.shield = 0;
+                this.drawPile = [...Game.player.deck]; this.shuffle(this.drawPile); this.discardPile = []; this.hand = [];
+                
+                this.activeBuffs = {}; let r = Game.player.roots; let buffsHtml = "";
+                if(r["火"] && r["木"]) { this.activeBuffs["火"] = 0.3; buffsHtml += `<div class="resonance-badge">🔥烈火燎原 (火傷+30%)</div>`; }
+                if(r["金"] && r["土"]) { this.activeBuffs["土"] = 0.3; buffsHtml += `<div class="resonance-badge">🛡️金剛不壞 (護盾+30%)</div>`; }
+                if(r["金"] && r["水"]) { this.activeBuffs["抽牌"] = true; buffsHtml += `<div class="resonance-badge">⚔️流光劍影 (攻擊抽牌)</div>`; }
+                document.getElementById('resonance-area').innerHTML = buffsHtml;
+                
+                switchScene('scene-combat'); 
+                this.updateEnemyUI(); 
+                
+                if (this.enemy.speed > Game.player.stats.speed) {
+                    alert(`敵方速度(${this.enemy.speed}) 高於 我方(${Game.player.stats.speed})，敵方先攻！`);
+                    Game.player.stats.hp -= this.enemy.atk;
+                    this.updateCombatUI();
+                }
+
+                this.startTurn();
+            },
+            startTurn: function() {
+                this.ep = Math.min(this.turn + 1, 10);
+                this.shield = 0; 
+                while(this.hand.length < 5) {
+                    if(this.drawPile.length === 0) { if(this.discardPile.length === 0) break; this.drawPile = [...this.discardPile]; this.discardPile = []; this.shuffle(this.drawPile); }
+                    this.hand.push(this.drawPile.pop());
+                }
+                this.updateCombatUI();
+            },
+            playCard: function(idx) {
+                let cardId = this.hand[idx]; let card = CARD_DB.find(c => c.id === cardId);
+                if (this.ep < card.cost) { this.showFloatText("EP 不足!", "player"); return; }
+                this.ep -= card.cost; this.hand.splice(idx, 1); this.discardPile.push(cardId);
+                
+                let val = card.val;
+                if (card.type === "攻擊" && this.activeBuffs[card.element]) val = Math.floor(val * (1 + this.activeBuffs[card.element]));
+                if (card.type === "防禦" && this.activeBuffs[card.element]) val = Math.floor(val * (1 + this.activeBuffs[card.element]));
+
+                if (card.type === "攻擊") {
+                    let dmg = val + Game.player.stats.atk;
+                    this.enemy.hp -= dmg; this.showFloatText(`-${dmg}`, "enemy");
+                    document.querySelector('.enemy-unit').style.transform = "translateX(10px)"; setTimeout(()=>document.querySelector('.enemy-unit').style.transform = "none", 100);
+                    if(this.activeBuffs["抽牌"] && Math.random() > 0.5 && this.drawPile.length > 0) { this.hand.push(this.drawPile.pop()); this.showFloatText("抽牌!", "player"); }
+                } else if (card.type === "防禦") {
+                    this.shield += val; this.showFloatText(`護盾+${val}`, "player");
+                } else if (card.type === "恢復") {
+                    Game.player.stats.hp = Math.min(Game.player.stats.hp + val, Game.player.stats.maxHp); this.showFloatText(`+${val}`, "player");
+                }
+                this.updateCombatUI(); this.updateEnemyUI();
+                
+                if (this.enemy.hp <= 0) { 
+                    setTimeout(() => { 
+                        let reward = this.enemy.name==='幽暗密林'?30:100; 
+                        alert(`勝利！獲得 ${reward} 靈石`); 
+                        Game.player.currency.spiritStone += reward; 
+                        switchScene('scene-main'); updateMainUI(); Game.save();
+                    }, 500); 
+                }
+            },
+            endTurn: function() {
+                let dmg = this.enemy.atk;
+                if(this.shield > 0) { if(this.shield >= dmg) { this.shield -= dmg; dmg = 0; } else { dmg -= this.shield; this.shield = 0; } }
+                if(dmg > 0) { Game.player.stats.hp -= dmg; this.showFloatText(`-${dmg}`, "player"); }
+                if(Game.player.stats.hp <= 0) { alert("戰鬥失敗... 重傷回城"); Game.player.stats.hp = 1; switchScene('scene-main'); return; }
+                this.turn++; this.startTurn();
+            },
+            flee: function() { 
+                if(Math.random()>0.4){alert("逃跑成功");switchScene('scene-main');} 
+                else{alert("逃跑失敗，受到攻擊"); Game.player.stats.hp-=10; this.updateCombatUI();} 
+            },
+            updateEnemyUI: function() { 
+                document.getElementById('enemy-hp-bar').style.width = Math.max(0, (this.enemy.hp/this.enemy.maxHp)*100) + "%"; 
+                document.getElementById('enemy-hp-text').innerText = `${Math.max(0,this.enemy.hp)}/${this.enemy.maxHp}`; 
+                document.getElementById('enemy-speed').innerText = this.enemy.speed;
+            },
+            updateCombatUI: function() {
+                let p = Game.player.stats; 
+                document.getElementById('player-hp-bar').style.width = Math.max(0, (p.hp/p.maxHp)*100) + "%"; 
+                document.getElementById('player-hp-text').innerText = `${Math.max(0, p.hp)}/${p.maxHp}`;
+                document.getElementById('player-shield-display').innerText = this.shield > 0 ? `(+${this.shield})` : "";
+                document.getElementById('player-speed').innerText = p.speed;
+                document.getElementById('ep-val').innerText = this.ep;
+                let epHtml = ""; for(let i=0;i<10;i++) epHtml += `<div class="ep-pip ${i<this.ep?'active':''}"></div>`; document.getElementById('ep-display').innerHTML = epHtml;
+                const handDiv = document.getElementById('hand-area'); handDiv.innerHTML = "";
+                this.hand.forEach((cardId, idx) => {
+                    let c = CARD_DB.find(x => x.id === cardId);
+                    let el = document.createElement('div'); el.className = `card border-${c.element}`; el.onclick = () => Combat.playCard(idx);
+                    el.innerHTML = `<div class="card-cost">${c.cost}</div><div style="font-size:30px;">${c.type==='攻擊'?'⚔️':c.type==='防禦'?'🛡️':'❤️'}</div><div style="font-weight:bold;" class="color-${c.element}">${c.name}</div><div style="font-size:12px; color:#aaa;">${c.desc}</div>`;
+                    handDiv.appendChild(el);
+                });
+            },
+            showFloatText: function(text, target) { let el = document.createElement('div'); el.className = 'float-text'; el.innerText = text; el.style.color = text.includes('-')?'#e74c3c':'#00CED1'; let p = target === 'enemy' ? document.querySelector('.enemy-unit') : document.querySelector('.player-status-bar'); el.style.left="50%"; el.style.top=target==='enemy'?"0":"-50px"; p.appendChild(el); setTimeout(()=>el.remove(),1000); },
+            shuffle: function(a) { for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} }
+        };
+
+        function switchScene(id) { document.querySelectorAll('.scene').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+        function goToCreation() { switchScene('scene-creation'); rollCharacter(); }
+        
+        function rollCharacter() { 
+            tempCharData.roots={}; let avail=[...ROOTS_BASE]; 
+            for(let i=0;i<(Math.floor(Math.random()*3)+1);i++) tempCharData.roots[avail.splice(Math.floor(Math.random()*avail.length),1)[0]]=Math.floor(Math.random()*90)+10; 
+            tempCharData.stats={atk:10+Math.floor(Math.random()*5),hp:100+Math.floor(Math.random()*20),speed:10+Math.floor(Math.random()*5)}; 
+            let h=""; for(let [k,v] of Object.entries(tempCharData.roots)) h+=`<div class="color-${k}">${k}: ${v}%</div>`; 
+            document.getElementById('roots-display').innerHTML=h; 
+            document.getElementById('stats-display').innerHTML=`<div>HP:${tempCharData.stats.hp}</div><div>ATK:${tempCharData.stats.atk}</div><div style="color:#FFD700;">SPD:${tempCharData.stats.speed}</div>`; 
+        }
+        
+        function selectGender(g) { tempCharData.gender=g; document.getElementById('g-male').className=g==='男'?'gender-card selected':'gender-card'; document.getElementById('g-female').className=g==='女'?'gender-card selected':'gender-card'; }
+        
+        function startGame() { 
+            let n=prompt("道號:","無名"); if(!n)return; 
+            Game.player=new Player(n); Game.player.roots=tempCharData.roots; Game.player.stats={...Game.player.stats, ...tempCharData.stats}; Game.recalcRealmStats();
+            switchScene('scene-main'); Game.startLoop(); updateMainUI();
+            Game.save(); // 初始存檔
+        }
+        
+        function updateMainUI() { 
+            let p=Game.player; document.getElementById('main-name').innerText=p.name; document.getElementById('main-lifespan').innerText=`${p.lifespanCurrent}/${p.lifespanMax}`; document.getElementById('main-money').innerText=p.currency.spiritStone;
+            let sn=(p.realmIdx<=3)?SUB_REALM_NAMES_10[p.subRealm-1]:SUB_REALM_NAMES_4[p.subRealm-1];
+            document.getElementById('main-realm').innerText=`${REALMS[p.realmIdx]} · ${sn}`;
+            document.getElementById('exp-bar').style.width=(p.exp/p.maxExp*100)+'%'; document.getElementById('exp-text').innerText=`${Math.floor(p.exp)}/${p.maxExp}`;
+            document.getElementById('gain-text').innerText=`+${p.expGain}/s`;
+        }
+        
+        window.onload = function() {
+           Game.init(); // 啟動初始化
+        };
+
+    </script>
+</body>
+</html>
